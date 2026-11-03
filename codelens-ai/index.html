@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>CodeLens — AI Code Reviewer</title>
+  <meta name="description" content="CodeLens is an AI-powered code review tool that detects security vulnerabilities, bugs, and code smells with deep AST analysis and OWASP alignment."/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "error": "#ba1a1a", "inverse-surface": "#213145", "tertiary-fixed": "#6ffbbe",
+            "tertiary-fixed-dim": "#4edea3", "on-secondary": "#ffffff", "surface-dim": "#cbdbf5",
+            "primary-container": "#4f46e5", "primary-fixed-dim": "#c3c0ff", "on-secondary-fixed": "#001e2f",
+            "outline": "#777587", "on-tertiary-fixed": "#002113", "on-secondary-fixed-variant": "#004c6e",
+            "secondary-container": "#39b8fd", "primary-fixed": "#e2dfff", "error-container": "#ffdad6",
+            "primary": "#3525cd", "surface-variant": "#d3e4fe", "on-tertiary": "#ffffff",
+            "on-surface-variant": "#464555", "surface": "#f8f9ff", "outline-variant": "#c7c4d8",
+            "on-primary": "#ffffff", "surface-tint": "#4d44e3", "surface-container-low": "#eff4ff",
+            "surface-container-high": "#dce9ff", "secondary": "#006591", "on-error-container": "#93000a",
+            "on-surface": "#0b1c30", "secondary-fixed": "#c9e6ff", "on-primary-fixed": "#0f0069",
+            "on-tertiary-fixed-variant": "#005236", "surface-container-highest": "#d3e4fe",
+            "inverse-primary": "#c3c0ff", "on-tertiary-container": "#67f4b7", "surface-bright": "#f8f9ff",
+            "on-background": "#0b1c30", "on-error": "#ffffff", "tertiary-container": "#006e4b",
+            "background": "#f8f9ff", "surface-container-lowest": "#ffffff", "on-primary-container": "#dad7ff",
+            "secondary-fixed-dim": "#89ceff", "on-primary-fixed-variant": "#3323cc",
+            "inverse-on-surface": "#eaf1ff", "on-secondary-container": "#004666",
+            "tertiary": "#005338", "surface-container": "#e5eeff"
+          },
+          borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
+          spacing: {
+            "gutter-desktop": "1.5rem", "margin-desktop": "2rem", "gutter": "1rem",
+            "space-xs": "0.25rem", "space-sm": "0.5rem", "space-md": "0.75rem",
+            "margin-tablet": "1.5rem", "gutter-mobile": "0.75rem", "space-lg": "1rem",
+            "margin": "1rem", "space-xl": "1.5rem"
+          },
+          fontFamily: {
+            "body-sm": ["Inter"], "code-md": ["JetBrains Mono"], "code-sm": ["JetBrains Mono"],
+            "headline-sm": ["Inter"], "body-md": ["Inter"], "headline-xl-mobile": ["Inter"],
+            "body-lg": ["Inter"], "headline-md": ["Inter"], "headline-xl": ["Inter"],
+            "headline-lg": ["Inter"], "label-md": ["Inter"], "code-lg": ["JetBrains Mono"], "label-sm": ["JetBrains Mono"]
+          },
+          fontSize: {
+            "body-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+            "code-md": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+            "code-sm": ["11px", { lineHeight: "16px", fontWeight: "400" }],
+            "headline-sm": ["16px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "body-md": ["14px", { lineHeight: "22px", fontWeight: "400" }],
+            "headline-xl-mobile": ["28px", { lineHeight: "36px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "body-lg": ["16px", { lineHeight: "26px", fontWeight: "400" }],
+            "headline-md": ["20px", { lineHeight: "28px", letterSpacing: "-0.015em", fontWeight: "600" }],
+            "headline-xl": ["36px", { lineHeight: "44px", letterSpacing: "-0.025em", fontWeight: "700" }],
+            "headline-lg": ["24px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "600" }],
+            "label-md": ["12px", { lineHeight: "16px", letterSpacing: "0.01em", fontWeight: "500" }],
+            "code-lg": ["14px", { lineHeight: "22px", fontWeight: "400" }],
+            "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.02em", fontWeight: "500" }]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    @layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } }
+    ::-webkit-scrollbar { display: none; }
+
+    /* Screen transitions */
+    .screen { display: none; animation: fadeIn 0.3s ease; }
+    .screen.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Sidebar transition */
+    .sidebar-item.active { background-color: #4f46e5 !important; color: #fff !important; }
+  </style>
+</head>
+<body class="bg-background font-body-md text-body-md text-on-surface">
+
+<!-- ═══════════════════════ SHARED HEADER ═══════════════════════ -->
+<header class="fixed top-0 left-0 right-0 h-16 bg-surface-container-lowest/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-50 flex items-center justify-between px-margin-desktop">
+  <div class="flex items-center gap-space-lg">
+    <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+      <span class="material-symbols-outlined text-on-primary text-[18px]">center_focus_strong</span>
+    </div>
+    <div class="flex items-center gap-space-sm">
+      <span class="font-headline-md text-headline-md tracking-tight text-on-surface">CodeLens</span>
+      <span class="font-label-sm text-label-sm uppercase tracking-wide bg-surface-container-high text-on-surface px-space-sm py-0.5 rounded-full">AI Code Reviewer</span>
+    </div>
+  </div>
+  <div class="flex items-center gap-space-xl">
+    <div class="hidden sm:flex items-center gap-space-sm bg-surface-container-low px-space-md py-1 rounded-full">
+      <span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
+      <span class="font-label-sm text-label-sm text-on-surface-variant" id="status-label">Ready to review</span>
+    </div>
+    <nav class="flex items-center gap-space-lg">
+      <a class="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Overview</a>
+      <a class="transition-colors text-on-surface font-semibold" href="#">Inspector</a>
+      <a class="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Docs &amp; Shortcuts</a>
+      <a class="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">History</a>
+    </nav>
+    <div class="flex items-center gap-space-sm">
+      <button class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" title="Toggle Dark/Light Mode" type="button">
+        <span class="material-symbols-outlined text-[20px]">light_mode</span>
+      </button>
+      <button class="flex items-center gap-space-xs px-space-sm py-1 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-label-md text-label-md" type="button">
+        <span class="material-symbols-outlined text-[18px]">star</span>
+        <span class="hidden md:inline">Feedback</span>
+      </button>
+      <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+        <span class="material-symbols-outlined text-on-primary text-[18px]">person</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════ SHARED SIDEBAR ═══════════════════════ -->
+<aside class="fixed left-0 top-16 bottom-0 w-64 bg-surface-container-lowest z-40 flex flex-col justify-between py-space-lg">
+  <div class="px-space-md">
+    <div class="px-space-sm mb-space-md flex items-center justify-between">
+      <span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">Review Workspaces</span>
+      <span class="material-symbols-outlined text-on-surface-variant text-[18px] cursor-pointer hover:text-on-surface">add</span>
+    </div>
+    <nav class="flex flex-col gap-1">
+      <a class="sidebar-item active flex items-center gap-space-sm px-space-md py-space-sm rounded-lg transition-colors" href="#" onclick="showScreen('review'); return false;">
+        <span class="material-symbols-outlined text-[20px]">code</span>
+        <span class="font-body-md text-body-md">Live Reviewer</span>
+      </a>
+      <a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" href="#">
+        <div class="flex items-center gap-space-sm">
+          <span class="material-symbols-outlined text-[20px]">call_merge</span>
+          <span class="font-body-md text-body-md">Pull Requests</span>
+        </div>
+        <span class="font-label-sm text-label-sm bg-surface-container-high text-on-surface px-1.5 py-0.5 rounded-full">3</span>
+      </a>
+      <a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" href="#">
+        <div class="flex items-center gap-space-sm">
+          <span class="material-symbols-outlined text-[20px]">shield</span>
+          <span class="font-body-md text-body-md">Security &amp; Bugs</span>
+        </div>
+        <span class="font-label-sm text-label-sm bg-error-container text-on-error-container px-1.5 py-0.5 rounded-full">2</span>
+      </a>
+      <a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" href="#">
+        <span class="material-symbols-outlined text-[20px]">history</span>
+        <span class="font-body-md text-body-md">Audit Log</span>
+      </a>
+      <a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" href="#">
+        <span class="material-symbols-outlined text-[20px]">tune</span>
+        <span class="font-body-md text-body-md">Rule Config</span>
+      </a>
+    </nav>
+  </div>
+  <div class="px-space-md">
+    <div class="p-space-md rounded-xl bg-surface-container-low flex flex-col gap-space-xs">
+      <div class="flex items-center justify-between">
+        <span class="font-label-sm text-label-sm text-on-surface-variant">Engine Model</span>
+        <span class="font-label-sm text-label-sm text-tertiary font-semibold">v2.4-turbo</span>
+      </div>
+      <div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+        <div class="bg-primary h-full w-4/5 rounded-full"></div>
+      </div>
+      <span class="font-label-sm text-label-sm text-on-surface-variant">Quota: 82% used</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
+<div class="pl-64">
+  <main class="w-full pt-16 bg-background min-h-screen">
+
+    <!-- ════════════════ SCREEN 1: MAIN REVIEW WORKSPACE ════════════════ -->
+    <div class="screen active" id="screen-review">
+      <!-- Workbench Sub-header -->
+      <div class="px-margin-desktop py-space-sm bg-surface-container-low flex flex-wrap items-center justify-between gap-space-md">
+        <div class="flex items-center gap-space-md">
+          <div class="flex items-center gap-space-xs font-label-md text-label-md text-on-surface-variant">
+            <span>Workspaces</span>
+            <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+            <span>api-gateway</span>
+            <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+            <span class="text-on-surface font-semibold">authMiddleware.ts</span>
+          </div>
+          <span class="bg-surface-container text-on-surface-variant px-space-sm py-0.5 rounded-full font-label-sm text-label-sm">Branch: feature/jwt-audit</span>
+          <span class="bg-tertiary-container/10 text-tertiary px-space-sm py-0.5 rounded-full font-label-sm text-label-sm font-medium flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> Clean Syntax Verified
+          </span>
+        </div>
+        <div class="flex items-center gap-space-sm">
+          <span class="font-label-sm text-label-sm text-on-surface-variant">Engine: <strong class="text-primary font-semibold">DeepSeek-Coder-V2 + AST-Linter</strong></span>
+          <div class="h-3 w-[1px] bg-outline-variant"></div>
+          <span class="font-label-sm text-label-sm text-on-surface-variant">Session #REV-88219</span>
+        </div>
+      </div>
+
+      <!-- Split Canvas -->
+      <div class="p-space-lg lg:p-margin-desktop grid grid-cols-1 xl:grid-cols-12 gap-gutter-desktop items-start">
+
+        <!-- LEFT: Code Editor -->
+        <section class="xl:col-span-6 flex flex-col gap-space-md bg-surface-container-lowest rounded-xl shadow-sm p-space-md lg:p-space-lg">
+          <div class="flex flex-wrap items-center justify-between gap-space-sm pb-space-xs">
+            <div class="flex items-center gap-space-sm">
+              <button class="flex items-center gap-space-xs px-space-md py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md transition-colors" type="button">
+                <span class="material-symbols-outlined text-[16px] text-primary">code</span>
+                <span>TypeScript</span>
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">expand_more</span>
+              </button>
+              <div class="flex items-center gap-1.5 bg-surface-container-low px-space-md py-1.5 rounded-lg">
+                <span class="w-2 h-2 rounded-full bg-tertiary"></span>
+                <span class="font-code-sm text-code-sm text-on-surface font-medium">authMiddleware.ts</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-space-md">
+              <button class="flex items-center gap-1.5 px-space-sm py-1 rounded-lg text-primary hover:bg-surface-container-low transition-colors font-label-md text-label-md" type="button">
+                <span class="material-symbols-outlined text-[16px]">auto_awesome</span>
+                <span>Try an example</span>
+              </button>
+              <button class="flex items-center gap-1 px-space-md py-1.5 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-label-md text-label-md shadow-sm transition-colors" type="button">
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">attach_file</span>
+                <span>Upload file</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Code Surface -->
+          <div class="relative bg-surface rounded-lg overflow-hidden flex flex-col font-code-sm text-code-sm shadow-inner min-h-[440px]">
+            <div class="flex items-center justify-between px-space-md py-1.5 bg-surface-container-low select-none">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-error/70"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-tertiary/60"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-secondary-container"></span>
+                <span class="ml-2 font-code-sm text-code-sm text-on-surface-variant">src/middleware/authMiddleware.ts</span>
+              </div>
+              <div class="flex items-center gap-space-md text-on-surface-variant">
+                <span class="font-label-sm text-label-sm">UTF-8</span>
+                <span class="font-label-sm text-label-sm">LF</span>
+                <button class="hover:text-on-surface transition-colors" title="Expand View"><span class="material-symbols-outlined text-[16px]">open_in_full</span></button>
+              </div>
+            </div>
+            <!-- Code Block -->
+            <div class="overflow-x-auto p-0 flex flex-1 select-text bg-surface-container-lowest">
+              <div class="py-space-md pl-3 pr-2 select-none flex flex-col text-right font-code-sm text-code-sm text-outline/50 bg-surface-container-low/40">
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+                <span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
+                <span>13</span><span>14</span>
+                <span class="text-error font-semibold flex items-center justify-end gap-1">
+                  <span class="material-symbols-outlined text-[12px] text-error">priority_high</span>15
+                </span>
+                <span class="text-error font-semibold">16</span>
+                <span class="text-secondary font-semibold">17</span>
+                <span>18</span><span>19</span>
+                <span class="text-tertiary-container font-semibold">20</span>
+                <span class="text-on-surface-variant font-semibold">21</span>
+                <span>22</span><span>23</span>
+              </div>
+              <div class="py-space-md px-space-md flex-1 font-code-sm text-code-sm leading-relaxed overflow-x-auto whitespace-pre">
+                <div><span class="text-primary font-semibold">import</span> { Request, Response, NextFunction } <span class="text-primary font-semibold">from</span> <span class="text-tertiary">'express'</span>;</div>
+                <div><span class="text-primary font-semibold">import</span> jwt <span class="text-primary font-semibold">from</span> <span class="text-tertiary">'jsonwebtoken'</span>;</div>
+                <div class="text-outline-variant select-none"> </div>
+                <div><span class="text-primary font-semibold">export const</span> <span class="text-secondary font-medium">authenticateToken</span> = (</div>
+                <div>  req: Request,</div>
+                <div>  res: Response,</div>
+                <div>  next: NextFunction</div>
+                <div>) => {</div>
+                <div> <span class="text-primary font-semibold">const</span> authHeader = req.headers[<span class="text-tertiary">'authorization'</span>];</div>
+                <div> <span class="text-primary font-semibold">const</span> token = authHeader &amp;&amp; authHeader.<span class="text-secondary font-medium">split</span>(<span class="text-tertiary">' '</span>)[<span class="text-secondary">1</span>];</div>
+                <div class="text-outline-variant select-none"> </div>
+                <div> <span class="text-primary font-semibold">if</span> (!token) {</div>
+                <div> <span class="text-primary font-semibold">return</span> res.<span class="text-secondary font-medium">status</span>(<span class="text-secondary">401</span>).<span class="text-secondary font-medium">json</span>({ error: <span class="text-tertiary">'Access token required'</span> });</div>
+                <div>  }</div>
+                <div class="text-outline-variant select-none"> </div>
+                <div class="bg-error-container/40 -mx-space-md px-space-md rounded-sm relative">
+                  <span class="text-outline">// Potential security flaw: weak secret fallback &amp; missing algorithm verification</span>
+                </div>
+                <div class="bg-error-container/40 -mx-space-md px-space-md rounded-sm">
+                  <span> <span class="text-primary font-semibold">try</span> {</span>
+                </div>
+                <div class="bg-error-container/50 -mx-space-md px-space-md rounded-sm font-medium">
+                  <span> <span class="text-primary font-semibold">const</span> decoded = jwt.<span class="text-secondary font-medium">verify</span>(token, process.env.<span class="text-on-surface font-bold">JWT_SECRET</span> || <span class="text-error font-semibold underline decoration-wavy decoration-error">'default_secret_key'</span>);</span>
+                </div>
+                <div class="bg-surface-variant/70 -mx-space-md px-space-md rounded-sm">
+                  <span>    (req <span class="text-primary font-semibold">as</span> <span class="text-error font-semibold">any</span>).user = decoded;</span>
+                </div>
+                <div> <span class="text-secondary font-medium">next</span>();</div>
+                <div>  } <span class="text-primary font-semibold">catch</span> (err) {</div>
+                <div class="bg-surface-container-high -mx-space-md px-space-md rounded-sm">
+                  <span> <span class="text-primary font-semibold">return</span> res.<span class="text-secondary font-medium">status</span>(<span class="text-secondary">403</span>).<span class="text-secondary font-medium">json</span>({ error: <span class="text-tertiary">'Invalid or expired token'</span>, details: <span class="text-error font-semibold">err</span> });</span>
+                </div>
+                <div>  }</div>
+                <div>};</div>
+              </div>
+            </div>
+            <!-- Diagnostic Banner -->
+            <div class="p-space-sm bg-error-container/20 flex items-center justify-between px-space-md">
+              <div class="flex items-center gap-space-xs font-label-sm text-label-sm text-on-error-container font-medium">
+                <span class="material-symbols-outlined text-[16px] text-error">gpp_maybe</span>
+                <span>Line 17 flagged: Hardcoded cryptographic fallback discovered.</span>
+              </div>
+              <button class="font-label-sm text-label-sm text-primary font-semibold hover:underline">Jump to Fix ↓</button>
+            </div>
+          </div>
+
+          <!-- Bottom Bar -->
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-space-md pt-space-xs">
+            <div class="flex items-center gap-space-xs text-on-surface-variant font-code-sm text-code-sm">
+              <span class="material-symbols-outlined text-[16px]">data_object</span>
+              <span>23 lines · 764 characters</span>
+              <span class="text-outline-variant">•</span>
+              <span class="text-on-surface-variant">Limit: 500 lines</span>
+            </div>
+            <div class="flex flex-col items-end gap-1 w-full sm:w-auto">
+              <button id="review-btn" class="w-full sm:w-auto px-space-xl py-2.5 rounded-lg bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md shadow-sm transition-all flex items-center justify-center gap-2 group active:scale-[0.99]" type="button" onclick="startAnalysis()">
+                <span class="material-symbols-outlined text-[18px] group-hover:rotate-12 transition-transform">bolt</span>
+                <span>Review Code</span>
+              </button>
+              <div class="flex items-center gap-1 text-on-surface-variant font-label-sm text-label-sm">
+                <span class="material-symbols-outlined text-[14px]">lock</span>
+                <span>Code is processed in-memory and never retained for training</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT: AI Review Findings -->
+        <section class="xl:col-span-6 flex flex-col gap-space-md">
+          <!-- Score Card -->
+          <div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-lg flex flex-col gap-space-md relative overflow-hidden">
+            <div class="absolute -right-12 -top-12 w-48 h-48 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-space-lg">
+              <div class="flex items-center gap-space-md">
+                <div class="relative w-20 h-20 flex-shrink-0 flex items-center justify-center">
+                  <svg class="w-full h-full transform -rotate-90" viewBox="0 0 72 72">
+                    <circle class="text-surface-container" cx="36" cy="36" fill="transparent" r="30" stroke="currentColor" stroke-width="6"></circle>
+                    <circle class="text-primary-container" cx="36" cy="36" fill="transparent" r="30" stroke="currentColor" stroke-dasharray="188.5" stroke-dashoffset="41.5" stroke-linecap="round" stroke-width="6"></circle>
+                  </svg>
+                  <div class="absolute flex flex-col items-center justify-center text-center">
+                    <span class="font-headline-md text-headline-md font-bold text-on-surface">7.8</span>
+                    <span class="font-label-sm text-label-sm text-outline -mt-1">/ 10</span>
+                  </div>
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-2">
+                    <span class="font-headline-sm text-headline-sm text-on-surface">Code Health: Good</span>
+                    <span class="bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-2 py-0.5 rounded-full font-medium">B+ Rating</span>
+                  </div>
+                  <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">3 improvements suggested to achieve enterprise production readiness.</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 self-stretch md:self-auto justify-end">
+                <div class="flex flex-col items-center bg-error-container/30 px-3 py-1.5 rounded-lg min-w-[54px]">
+                  <span class="font-headline-sm text-headline-sm font-bold text-error">1</span>
+                  <span class="font-label-sm text-label-sm uppercase tracking-wider text-error font-medium">High</span>
+                </div>
+                <div class="flex flex-col items-center bg-surface-container-high px-3 py-1.5 rounded-lg min-w-[54px]">
+                  <span class="font-headline-sm text-headline-sm font-bold text-secondary">1</span>
+                  <span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary font-medium">Med</span>
+                </div>
+                <div class="flex flex-col items-center bg-surface-container-low px-3 py-1.5 rounded-lg min-w-[54px]">
+                  <span class="font-headline-sm text-headline-sm font-bold text-outline">1</span>
+                  <span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant font-medium">Low</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="bg-surface-container-low rounded-lg p-space-md">
+              <div class="flex items-start gap-space-sm">
+                <span class="material-symbols-outlined text-[20px] text-primary flex-shrink-0 mt-0.5">psychology</span>
+                <p class="font-body-sm text-body-sm text-on-surface leading-relaxed">
+                  The middleware satisfies base token receipt checks, but exposes a <strong>critical cryptographic fallback</strong> to a default string if environment vars are absent. Furthermore, passing raw exception dumps to the client in response objects facilitates <strong>internal reconnaissance</strong>.
+                </p>
+              </div>
+            </div>
+
+            <!-- Filter Chips -->
+            <div class="flex flex-wrap items-center gap-space-xs pt-1">
+              <span class="font-label-sm text-label-sm uppercase tracking-wider text-outline mr-1">Filters:</span>
+              <button class="px-space-md py-1 rounded-full bg-primary-container text-on-primary font-label-sm text-label-sm font-medium transition-colors shadow-sm">All (3)</button>
+              <button class="px-space-md py-1 rounded-full bg-error-container text-on-error-container hover:bg-error-container/80 font-label-sm text-label-sm font-medium transition-colors">High (1)</button>
+              <button class="px-space-md py-1 rounded-full bg-surface-container-high text-on-surface hover:bg-surface-container-highest font-label-sm text-label-sm font-medium transition-colors">Medium (1)</button>
+              <button class="px-space-md py-1 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container font-label-sm text-label-sm font-medium transition-colors">Low (1)</button>
+            </div>
+          </div>
+
+          <!-- Finding 1: High -->
+          <article class="bg-surface-container-lowest rounded-xl shadow-sm p-space-lg flex flex-col gap-space-md transition-all hover:shadow-md relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-error"></div>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+              <div class="flex flex-wrap items-center gap-space-sm">
+                <span class="bg-error-container text-on-error-container font-label-sm text-label-sm px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[14px]">warning</span> High Severity
+                </span>
+                <span class="bg-surface-container text-on-surface font-label-sm text-label-sm px-2 py-0.5 rounded-full">CWE-798</span>
+                <span class="bg-surface-container text-on-surface font-label-sm text-label-sm px-2 py-0.5 rounded-full">Security</span>
+              </div>
+              <div class="flex items-center gap-space-xs text-outline font-code-sm text-code-sm">
+                <span class="material-symbols-outlined text-[16px]">location_on</span>
+                <span>Lines 16-17</span>
+              </div>
+            </div>
+            <div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface">Hardcoded JWT Secret Fallback</h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">
+                Using the fallback string <code class="px-1.5 py-0.5 rounded bg-surface-container font-code-sm text-code-sm text-error font-medium">'default_secret_key'</code> allows any unauthorized party to craft signatures verified by the service if the environment variable is not provisioned in deployment.
+              </p>
+            </div>
+            <div class="rounded-lg bg-surface-container-lowest overflow-hidden flex flex-col">
+              <div class="bg-surface-container-high px-space-md py-1.5 flex items-center justify-between">
+                <span class="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[16px] text-tertiary">tune</span> Recommended Replacement
+                </span>
+                <button class="flex items-center gap-1 font-label-sm text-label-sm text-primary hover:text-primary-container transition-colors" onclick="navigator.clipboard.writeText(`if (!process.env.JWT_SECRET) {\n  throw new Error('FATAL: JWT_SECRET missing.');\n}\nconst decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });`)">
+                  <span class="material-symbols-outlined text-[14px]">content_copy</span>
+                  <span>Copy Fix</span>
+                </button>
+              </div>
+              <div class="p-space-md font-code-sm text-code-sm leading-relaxed overflow-x-auto bg-surface-container-low">
+                <div class="text-error bg-error-container/30 px-2 py-0.5 rounded-sm line-through">- const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_secret_key');</div>
+                <div class="text-tertiary bg-tertiary-container/10 px-2 py-0.5 rounded-sm mt-1">+ if (!process.env.JWT_SECRET) {</div>
+                <div class="text-tertiary bg-tertiary-container/10 px-2 py-0.5 rounded-sm">+   throw new Error('FATAL: JWT_SECRET environment variable is missing.');</div>
+                <div class="text-tertiary bg-tertiary-container/10 px-2 py-0.5 rounded-sm">+ }</div>
+                <div class="text-tertiary bg-tertiary-container/10 px-2 py-0.5 rounded-sm">+ const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });</div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <a class="font-label-sm text-label-sm text-secondary hover:underline flex items-center gap-1" href="#">
+                <span>View OWASP Top 10 Guideline (A02:2021)</span>
+                <span class="material-symbols-outlined text-[14px]">north_east</span>
+              </a>
+              <div class="flex items-center gap-2">
+                <button class="px-space-md py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors" type="button">Dismiss</button>
+                <button class="px-space-md py-1 rounded-lg bg-primary text-on-primary font-label-md text-label-md transition-colors shadow-sm" type="button">Apply Fix</button>
+              </div>
+            </div>
+          </article>
+
+          <!-- Finding 2: Medium -->
+          <article class="bg-surface-container-lowest rounded-xl shadow-sm p-space-lg flex flex-col gap-space-md transition-all hover:shadow-md relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-secondary-container"></div>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+              <div class="flex flex-wrap items-center gap-space-sm">
+                <span class="bg-surface-variant text-on-surface font-label-sm text-label-sm px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[14px] text-secondary">info</span> Medium Severity
+                </span>
+                <span class="bg-surface-container text-on-surface font-label-sm text-label-sm px-2 py-0.5 rounded-full">Info Leak</span>
+                <span class="bg-surface-container text-on-surface font-label-sm text-label-sm px-2 py-0.5 rounded-full">Error Handling</span>
+              </div>
+              <div class="flex items-center gap-space-xs text-outline font-code-sm text-code-sm">
+                <span class="material-symbols-outlined text-[16px]">location_on</span>
+                <span>Line 21</span>
+              </div>
+            </div>
+            <div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface">Raw Exception Leaked in Response Payload</h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">
+                Exposing the raw <code class="px-1.5 py-0.5 rounded bg-surface-container font-code-sm text-code-sm text-secondary font-medium">err</code> object directly inside HTTP 403 response exposes node runtime paths, inner signature errors, and dependency versions to external consumers.
+              </p>
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-1">
+              <button class="px-space-md py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors" type="button">Dismiss</button>
+              <button class="px-space-md py-1 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors" type="button">Quick Patch</button>
+            </div>
+          </article>
+
+          <!-- Finding 3: Low -->
+          <article class="bg-surface-container-lowest rounded-xl shadow-sm p-space-lg flex flex-col gap-space-md transition-all hover:shadow-md relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-outline-variant"></div>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+              <div class="flex flex-wrap items-center gap-space-sm">
+                <span class="bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[14px]">flag</span> Low Severity
+                </span>
+                <span class="bg-surface-container text-on-surface font-label-sm text-label-sm px-2 py-0.5 rounded-full">TypeScript</span>
+                <span class="bg-surface-container text-on-surface font-label-sm text-label-sm px-2 py-0.5 rounded-full">Type Safety</span>
+              </div>
+              <div class="flex items-center gap-space-xs text-outline font-code-sm text-code-sm">
+                <span class="material-symbols-outlined text-[16px]">location_on</span>
+                <span>Line 18</span>
+              </div>
+            </div>
+            <div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface">Avoid Unsafe Type Assertion <code class="px-1.5 py-0.5 rounded bg-surface-container font-code-sm text-code-sm">(req as any)</code></h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">
+                Bypassing TypeScript type checking via <code class="font-code-sm text-code-sm">any</code> eliminates autocomplete and compile-time contract enforcement on downstream routes consuming <code class="font-code-sm text-code-sm">req.user</code>.
+              </p>
+            </div>
+            <div class="p-space-sm rounded-lg bg-surface-container-low flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px] text-primary">lightbulb</span>
+              <span class="font-body-sm text-body-sm text-on-surface">Augment Express typings in a <code class="font-code-sm text-code-sm text-primary">custom.d.ts</code> file using declaration merging.</span>
+            </div>
+          </article>
+
+          <!-- Bottom Actions Bar -->
+          <div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-md flex flex-col md:flex-row items-center justify-between gap-space-md">
+            <div class="flex items-center gap-space-sm">
+              <span class="font-label-md text-label-md text-on-surface-variant">Was this review helpful?</span>
+              <div class="flex items-center gap-1">
+                <button id="thumbs-up" class="flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-surface-container-low text-on-surface transition-colors font-label-sm text-label-sm" title="Helpful" type="button">
+                  <span class="material-symbols-outlined text-[16px] text-tertiary">thumb_up</span>
+                  <span id="vote-count">24</span>
+                </button>
+                <button class="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-surface-container-low text-on-surface-variant hover:text-on-surface transition-colors font-label-sm text-label-sm" title="Needs improvement" type="button">
+                  <span class="material-symbols-outlined text-[16px]">thumb_down</span>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+              <button class="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors" type="button">
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">content_copy</span>
+                <span class="hidden sm:inline">Copy as Markdown</span>
+              </button>
+              <button class="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors" type="button">
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">download</span>
+                <span class="hidden sm:inline">Download .md</span>
+              </button>
+              <button class="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors" type="button" onclick="showScreen('review')">
+                <span class="material-symbols-outlined text-[16px]">refresh</span>
+                <span>New Review</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- ════════════════ SCREEN 2: ANALYZING CODE ════════════════ -->
+    <div class="screen" id="screen-analyzing">
+      <div class="px-margin-desktop py-space-xl flex flex-col gap-space-lg max-w-[1720px] mx-auto w-full">
+        <div class="flex flex-wrap items-center justify-between gap-space-md">
+          <div class="flex items-center gap-space-md">
+            <div class="flex items-center gap-space-xs bg-surface-container-high px-space-md py-1 rounded-full text-on-surface">
+              <span class="w-2 h-2 rounded-full bg-primary-container animate-ping"></span>
+              <span class="font-label-sm text-label-sm uppercase tracking-wide">Analysis Session active</span>
+            </div>
+            <span class="text-on-surface-variant font-label-md text-label-md">Session #CL-9082A</span>
+            <span class="text-on-surface-variant font-body-sm text-body-sm">·</span>
+            <span class="text-on-surface-variant font-code-sm text-code-sm">target: auth-middleware.ts</span>
+          </div>
+          <div class="flex items-center gap-space-sm">
+            <span class="font-label-sm text-label-sm text-on-surface-variant">Worker Thread:</span>
+            <span class="font-code-sm text-code-sm px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold">wasm-v8-isolated</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+          <!-- Left: Locked Editor -->
+          <div class="xl:col-span-6 flex flex-col bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden relative">
+            <div class="absolute inset-0 bg-surface-dim/10 backdrop-blur-[0.5px] z-20 pointer-events-none"></div>
+            <div class="px-space-lg py-space-md bg-surface-container-low flex flex-wrap items-center justify-between gap-space-sm z-30">
+              <div class="flex items-center gap-space-sm">
+                <div class="flex items-center gap-space-xs px-space-md py-1 rounded bg-surface-container-highest text-on-surface font-label-md text-label-md cursor-not-allowed opacity-80 select-none">
+                  <span class="material-symbols-outlined text-[16px] text-primary">data_object</span>
+                  <span>TypeScript</span>
+                  <span class="material-symbols-outlined text-[16px] text-on-surface-variant opacity-60">lock</span>
+                </div>
+                <div class="flex items-center gap-space-xs px-2.5 py-1 rounded bg-error-container text-on-error-container font-label-sm text-label-sm">
+                  <span class="material-symbols-outlined text-[14px]">lock</span>
+                  <span>Editor locked during analysis</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-space-md">
+                <span class="flex items-center gap-1 font-label-md text-label-md text-on-surface-variant/40 cursor-not-allowed select-none">
+                  <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload file
+                </span>
+              </div>
+            </div>
+            <div class="relative bg-surface-container-lowest overflow-x-auto select-none">
+              <div class="absolute right-4 top-4 z-10 px-space-sm py-1 rounded bg-surface-container-high/90 text-on-surface-variant font-code-sm text-code-sm flex items-center gap-1">
+                <span class="material-symbols-outlined text-[14px] text-tertiary">check_circle</span>
+                <span>AST tree snapshotted</span>
+              </div>
+              <div class="font-code-md text-code-md flex leading-6 py-space-md">
+                <div class="select-none text-right pr-space-md pl-space-lg text-outline-variant font-code-sm text-code-sm bg-surface-container-lowest w-12 flex flex-col opacity-60">
+                  <span>01</span><span>02</span><span>03</span><span>04</span><span>05</span><span>06</span>
+                  <span>07</span><span>08</span><span>09</span><span>10</span><span>11</span><span>12</span>
+                  <span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span>
+                </div>
+                <div class="flex-1 px-space-md text-on-surface/85 overflow-x-auto whitespace-pre font-code-md text-code-md tracking-tight">
+                  <div><span class="text-primary font-semibold">import</span> { Request, Response, NextFunction } <span class="text-primary font-semibold">from</span> <span class="text-tertiary">"express"</span>;</div>
+                  <div><span class="text-primary font-semibold">import</span> jwt <span class="text-primary font-semibold">from</span> <span class="text-tertiary">"jsonwebtoken"</span>;</div>
+                  <div><span class="text-primary font-semibold">import</span> { decryptUserPayload } <span class="text-primary font-semibold">from</span> <span class="text-tertiary">"@corp/crypto"</span>;</div>
+                  <div></div>
+                  <div><span class="text-outline italic">// Insecure signature verification flagged</span></div>
+                  <div><span class="text-primary font-semibold">const</span> JWT_SECRET = process.env.JWT_SECRET || <span class="text-error font-medium">"default_insecure_secret_prod"</span>;</div>
+                  <div></div>
+                  <div><span class="text-primary font-semibold">export async function</span> <span class="text-secondary font-medium">authMiddleware</span>(</div>
+                  <div>  req: Request,</div>
+                  <div>  res: Response,</div>
+                  <div>  next: NextFunction</div>
+                  <div>): Promise&lt;<span class="text-secondary">void</span>&gt; {</div>
+                  <div> <span class="text-primary font-semibold">const</span> authHeader = req.headers.authorization;</div>
+                  <div></div>
+                  <div> <span class="text-primary font-semibold">if</span> (!authHeader || !authHeader.startsWith(<span class="text-tertiary">"Bearer "</span>)) {</div>
+                  <div>    res.status(<span class="text-secondary">401</span>).json({ error: <span class="text-tertiary">"Missing authentication token"</span> });</div>
+                  <div> <span class="text-primary font-semibold">return</span>;</div>
+                  <div>  }</div>
+                </div>
+              </div>
+            </div>
+            <div class="p-space-lg bg-surface-container-low flex flex-col sm:flex-row sm:items-center justify-between gap-space-md z-30">
+              <div class="flex items-center gap-space-sm text-on-surface-variant font-label-sm text-label-sm">
+                <span class="material-symbols-outlined text-[16px] text-tertiary">lock_clock</span>
+                <span class="font-code-sm text-code-sm font-medium">18 lines · 684 characters</span>
+              </div>
+              <button class="px-space-lg py-space-sm bg-primary-container/80 text-on-primary rounded-lg font-headline-sm text-headline-sm flex items-center gap-space-sm shadow-sm cursor-not-allowed" disabled type="button">
+                <svg class="animate-spin h-4 w-4 text-on-primary" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" fill="currentColor"></path>
+                </svg>
+                <span>Analyzing AST &amp; Security Rules...</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Analysis Progress -->
+          <div class="xl:col-span-6 flex flex-col gap-space-lg">
+            <div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-xl flex flex-col relative overflow-hidden">
+              <div class="absolute -top-16 -right-16 w-48 h-48 bg-primary-container/5 rounded-full blur-2xl pointer-events-none"></div>
+              <div class="flex items-center justify-between pb-space-lg">
+                <div class="flex items-center gap-space-md">
+                  <div class="relative w-12 h-12 flex items-center justify-center">
+                    <div class="absolute inset-0 rounded-full bg-primary-fixed animate-ping opacity-40"></div>
+                    <div class="relative w-12 h-12 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-md">
+                      <span class="material-symbols-outlined text-[24px] animate-spin" style="animation-duration: 4s;">cc_attribution</span>
+                    </div>
+                  </div>
+                  <div class="flex flex-col">
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight">Reviewing your code...</h2>
+                    <p class="font-body-sm text-body-sm text-on-surface-variant">Evaluating syntax tree, OWASP Top 10 security vectors, and type safety constraints...</p>
+                  </div>
+                </div>
+                <button class="text-on-surface-variant hover:text-error transition-colors font-label-md text-label-md flex items-center gap-1 px-space-sm py-1 rounded bg-surface-container-low hover:bg-error-container" type="button" onclick="showScreen('review')">
+                  <span class="material-symbols-outlined text-[16px]">close</span>
+                  <span>Cancel</span>
+                </button>
+              </div>
+
+              <!-- Progress Bar -->
+              <div class="my-space-md bg-surface-container-low p-space-lg rounded-xl flex flex-col gap-space-sm">
+                <div class="flex items-center justify-between font-label-md text-label-md">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-primary">Stage 3 of 4</span>
+                    <span class="text-on-surface-variant font-code-sm text-code-sm">Deep Vector Traversal</span>
+                  </div>
+                  <div class="flex items-center gap-space-md">
+                    <span class="font-code-sm text-code-sm text-on-surface-variant flex items-center gap-1">
+                      <span class="material-symbols-outlined text-[14px]">timer</span>
+                      Elapsed: <strong class="text-on-surface" id="timer-val">1.4s</strong>
+                    </span>
+                    <span class="font-code-sm text-code-sm font-bold text-primary" id="pct-val">68%</span>
+                  </div>
+                </div>
+                <div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden relative">
+                  <div class="bg-primary-container h-full rounded-full transition-all duration-300 relative" id="progress-analyzing" style="width: 68%;">
+                    <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Steps -->
+              <div class="flex flex-col gap-space-sm mt-space-sm">
+                <div class="flex items-center justify-between p-space-md rounded-lg bg-surface-container-lowest hover:bg-surface-container-low transition-colors">
+                  <div class="flex items-center gap-space-md">
+                    <div class="w-6 h-6 rounded-full bg-tertiary-fixed-dim/40 text-tertiary flex items-center justify-center">
+                      <span class="material-symbols-outlined text-[16px] font-bold">check</span>
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-body-md text-body-md font-medium text-on-surface">Step 1: Parsing Abstract Syntax Tree (AST)</span>
+                      <span class="font-label-sm text-label-sm text-on-surface-variant font-code-sm">Tokens parsed: 184 symbols, 0 syntax violations</span>
+                    </div>
+                  </div>
+                  <span class="font-code-sm text-code-sm font-medium px-2 py-0.5 rounded bg-surface-container-high text-tertiary">12ms</span>
+                </div>
+                <div class="flex items-center justify-between p-space-md rounded-lg bg-surface-container-lowest hover:bg-surface-container-low transition-colors">
+                  <div class="flex items-center gap-space-md">
+                    <div class="w-6 h-6 rounded-full bg-tertiary-fixed-dim/40 text-tertiary flex items-center justify-center">
+                      <span class="material-symbols-outlined text-[16px] font-bold">check</span>
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-body-md text-body-md font-medium text-on-surface">Step 2: Checking Security &amp; Secret Leaks (CWE/OWASP)</span>
+                      <span class="font-label-sm text-label-sm text-error font-code-sm flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[12px]">warning</span>
+                        2 potential hazards flagged: CWE-798, CWE-347
+                      </span>
+                    </div>
+                  </div>
+                  <span class="font-code-sm text-code-sm font-medium px-2 py-0.5 rounded bg-surface-container-high text-tertiary">145ms</span>
+                </div>
+                <div class="flex items-center justify-between p-space-md rounded-lg bg-surface-container-high/60 shadow-sm">
+                  <div class="flex items-center gap-space-md">
+                    <div class="w-6 h-6 rounded-full bg-primary-container text-on-primary flex items-center justify-center animate-pulse">
+                      <svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" fill="none" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor"></path>
+                      </svg>
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-body-md text-body-md font-semibold text-primary">Step 3: Evaluating Performance &amp; Memory Allocations</span>
+                      <span class="font-label-sm text-label-sm text-on-surface-variant font-code-sm animate-pulse">Tracing async call tree and GC allocations...</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-primary-fixed text-primary font-code-sm font-medium">
+                    <span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+                    <span>In progress...</span>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between p-space-md rounded-lg bg-surface-container-lowest opacity-50">
+                  <div class="flex items-center gap-space-md">
+                    <div class="w-6 h-6 rounded-full bg-surface-container-highest text-outline flex items-center justify-center">
+                      <span class="w-2 h-2 rounded-full bg-outline-variant"></span>
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-body-md text-body-md text-on-surface">Step 4: Generating contextual TypeScript patches &amp; Markdown report</span>
+                      <span class="font-label-sm text-label-sm text-on-surface-variant font-code-sm">LLM synthetic synthesis queued</span>
+                    </div>
+                  </div>
+                  <span class="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 rounded bg-surface-container-low">Waiting...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Skeleton placeholder cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-space-md">
+              <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm animate-pulse">
+                <div class="flex items-center justify-between"><div class="h-3 w-20 bg-surface-container-high rounded"></div><div class="h-5 w-5 bg-surface-container-high rounded-full"></div></div>
+                <div class="h-8 w-14 bg-surface-container-high rounded mt-space-xs"></div>
+                <div class="h-2 w-full bg-surface-container-high rounded"></div>
+              </div>
+              <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm animate-pulse">
+                <div class="flex items-center justify-between"><div class="h-3 w-24 bg-surface-container-high rounded"></div><div class="h-5 w-5 bg-surface-container-high rounded-full"></div></div>
+                <div class="h-8 w-10 bg-surface-container-high rounded mt-space-xs"></div>
+                <div class="h-2 w-4/5 bg-surface-container-high rounded"></div>
+              </div>
+              <div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col gap-space-sm animate-pulse">
+                <div class="flex items-center justify-between"><div class="h-3 w-16 bg-surface-container-high rounded"></div><div class="h-5 w-5 bg-surface-container-high rounded-full"></div></div>
+                <div class="h-8 w-20 bg-surface-container-high rounded mt-space-xs"></div>
+                <div class="h-2 w-3/4 bg-surface-container-high rounded"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════ SCREEN 3: ERROR & RECOVERY STATE ════════════════ -->
+    <div class="screen" id="screen-error">
+      <!-- Top Utility Bar -->
+      <div class="w-full bg-surface-container-lowest px-margin-desktop py-space-sm flex flex-wrap items-center justify-between gap-space-md shadow-sm">
+        <div class="flex items-center gap-space-md">
+          <div class="flex items-center gap-space-xs text-on-surface">
+            <span class="material-symbols-outlined text-primary text-[20px]">terminal</span>
+            <span class="font-headline-sm text-headline-sm">Active Session</span>
+          </div>
+          <span class="font-label-sm text-label-sm bg-surface-container text-on-surface-variant px-2 py-0.5 rounded-full">Workspace: auth-service-v2</span>
+          <span class="font-label-sm text-label-sm text-outline hidden md:inline">· Session ID: #req-8492-f01</span>
+        </div>
+        <div class="flex items-center gap-space-lg">
+          <div class="flex items-center gap-space-xs font-label-sm text-label-sm text-on-surface-variant">
+            <span class="w-2 h-2 rounded-full bg-tertiary"></span>
+            <span>Local Buffer: Safe &amp; Cached</span>
+          </div>
+          <div class="flex items-center gap-space-xs bg-error-container text-on-error-container px-space-md py-1 rounded-full font-label-sm text-label-sm font-semibold">
+            <span class="material-symbols-outlined text-[16px]">bolt</span>
+            <span>Incident Intercepted</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Panels -->
+      <div class="w-full p-margin-desktop">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter-desktop items-start">
+
+          <!-- Left: Code Editor -->
+          <section class="lg:col-span-7 flex flex-col bg-surface-container-lowest rounded-xl shadow-md overflow-hidden">
+            <div class="p-space-lg bg-surface-container-low flex flex-wrap items-center justify-between gap-space-md">
+              <div class="flex flex-wrap items-center gap-space-sm">
+                <button class="flex items-center gap-space-xs bg-surface-container-lowest text-on-surface font-label-md text-label-md px-space-md py-1.5 rounded-lg shadow-sm hover:bg-surface transition-colors" type="button">
+                  <span class="material-symbols-outlined text-[16px] text-primary">data_object</span>
+                  <span>TypeScript / Express</span>
+                  <span class="material-symbols-outlined text-[16px] text-outline">expand_more</span>
+                </button>
+                <label class="flex items-center gap-space-xs bg-surface-container-lowest text-on-surface font-label-md text-label-md px-space-md py-1.5 rounded-lg shadow-sm hover:bg-surface cursor-pointer transition-colors">
+                  <span class="material-symbols-outlined text-[16px] text-outline">upload_file</span>
+                  <span>Upload file</span>
+                  <input class="hidden" type="file"/>
+                </label>
+                <button class="flex items-center gap-space-xs bg-surface-container-lowest text-on-surface font-label-md text-label-md px-space-md py-1.5 rounded-lg shadow-sm hover:bg-surface transition-colors" type="button">
+                  <span class="material-symbols-outlined text-[16px] text-secondary">auto_fix_high</span>
+                  <span>Try example</span>
+                </button>
+              </div>
+              <div class="flex items-center gap-space-xs text-on-surface-variant font-code-sm text-code-sm bg-surface-container px-space-md py-1 rounded-md">
+                <span class="w-2 h-2 rounded-full bg-tertiary"></span>
+                <span>18 lines · 684 characters</span>
+              </div>
+            </div>
+            <div class="bg-surface-variant px-space-lg py-2 flex items-center justify-between">
+              <div class="flex items-center gap-space-xs text-on-surface font-label-sm text-label-sm">
+                <span class="material-symbols-outlined text-primary text-[18px]">verified_user</span>
+                <span>Local snapshot preserved. Your code was not discarded during review failure.</span>
+              </div>
+              <span class="font-code-sm text-code-sm text-on-surface-variant">Unsaved diff: 0</span>
+            </div>
+            <div class="relative bg-surface-container-lowest font-code-md text-code-md flex overflow-x-auto min-h-[460px]">
+              <div class="select-none py-space-lg px-space-md text-right text-outline bg-surface-container-low flex flex-col font-code-sm text-code-sm">
+                <span>01</span><span>02</span><span>03</span><span>04</span><span>05</span><span>06</span>
+                <span>07</span><span>08</span><span>09</span><span>10</span><span>11</span><span>12</span>
+                <span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span>
+              </div>
+              <div class="flex-1 p-space-lg font-code-md text-code-md text-on-surface outline-none overflow-x-auto" contenteditable="true" spellcheck="false">
+                <div><span class="text-primary font-semibold">import</span> { Request, Response, NextFunction } <span class="text-primary font-semibold">from</span> <span class="text-tertiary">'express'</span>;</div>
+                <div><span class="text-primary font-semibold">import</span> jwt <span class="text-primary font-semibold">from</span> <span class="text-tertiary">'jsonwebtoken'</span>;</div>
+                <div><span class="text-primary font-semibold">import</span> { redisClient } <span class="text-primary font-semibold">from</span> <span class="text-tertiary">'../lib/redis'</span>;</div>
+                <div> </div>
+                <div><span class="text-outline italic">// Token verification middleware with fallback session checks</span></div>
+                <div><span class="text-primary font-semibold">export async function</span> <span class="text-secondary font-semibold">authenticateBearerToken</span>(req: Request, res: Response, next: NextFunction) {</div>
+                <div class="pl-4"><span class="text-primary font-semibold">const</span> authHeader = req.headers[<span class="text-tertiary">'authorization'</span>];</div>
+                <div class="pl-4"><span class="text-primary font-semibold">if</span> (!authHeader?.startsWith(<span class="text-tertiary">'Bearer '</span>)) {</div>
+                <div class="pl-8"><span class="text-primary font-semibold">return</span> res.status(<span class="text-secondary">401</span>).json({ error: <span class="text-tertiary">'Missing or malformed authorization header'</span> });</div>
+                <div class="pl-4">}</div>
+                <div> </div>
+                <div class="pl-4"><span class="text-primary font-semibold">const</span> token = authHeader.split(<span class="text-tertiary">' '</span>)[<span class="text-secondary">1</span>];</div>
+                <div class="pl-4"><span class="text-primary font-semibold">const</span> isRevoked = <span class="text-primary font-semibold">await</span> redisClient.get(<span class="text-tertiary">`revoked:${token}`</span>);</div>
+                <div class="pl-4"><span class="text-primary font-semibold">if</span> (isRevoked) {</div>
+                <div class="pl-8"><span class="text-primary font-semibold">return</span> res.status(<span class="text-secondary">403</span>).json({ error: <span class="text-tertiary">'Access token has been revoked by issuer'</span> });</div>
+                <div class="pl-4">}</div>
+                <div> </div>
+                <div class="pl-4"><span class="text-primary font-semibold">return</span> next();</div>
+                <div>}</div>
+              </div>
+            </div>
+            <div class="p-space-lg bg-surface-container-low flex flex-wrap items-center justify-between gap-space-md">
+              <div class="flex items-center gap-space-sm text-on-surface-variant font-label-md text-label-md">
+                <span class="material-symbols-outlined text-[18px]">keyboard</span>
+                <span>Press <kbd class="px-1.5 py-0.5 bg-surface-container-lowest rounded shadow-sm font-code-sm text-code-sm text-on-surface">⌘ + Enter</kbd> to execute review</span>
+              </div>
+              <div class="flex items-center gap-space-md">
+                <button class="px-space-md py-space-sm text-on-surface-variant hover:text-on-surface font-label-md text-label-md rounded-lg transition-colors" type="button">Format code</button>
+                <button class="flex items-center gap-space-xs px-space-lg py-space-sm bg-primary text-on-primary rounded-lg font-headline-sm text-headline-sm hover:bg-primary-container shadow-sm active:scale-95 transition-all" type="button" onclick="startAnalysis()">
+                  <span class="material-symbols-outlined text-[18px]">play_arrow</span>
+                  <span>Review Code</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Right: Error Recovery Panel -->
+          <section class="lg:col-span-5 flex flex-col gap-space-lg">
+            <!-- Error Card -->
+            <div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-md relative overflow-hidden">
+              <div class="flex items-start gap-space-lg">
+                <div class="w-12 h-12 rounded-xl bg-error-container text-on-error-container flex items-center justify-center shrink-0 shadow-sm">
+                  <span class="material-symbols-outlined text-[28px]">speed</span>
+                </div>
+                <div class="flex flex-col flex-1 min-w-0">
+                  <div class="flex items-center gap-space-sm mb-1">
+                    <span class="font-label-sm text-label-sm uppercase tracking-wider font-semibold text-error bg-error-container/40 px-2 py-0.5 rounded-full">Rate Limit · 429</span>
+                    <span class="font-code-sm text-code-sm text-outline">HTTP_TOO_MANY_REQUESTS</span>
+                  </div>
+                  <h2 class="font-headline-md text-headline-md text-on-surface tracking-tight">Review couldn't be completed</h2>
+                  <p class="font-body-md text-body-md text-on-surface-variant mt-space-xs">Our review engine encountered a rate limit while processing your request. Your code has been preserved on the left panel.</p>
+                </div>
+              </div>
+
+              <!-- Countdown -->
+              <div class="mt-space-lg bg-surface-container-low rounded-lg p-space-md flex flex-col gap-space-sm">
+                <div class="flex items-center justify-between text-on-surface font-label-md text-label-md">
+                  <div class="flex items-center gap-space-xs font-semibold">
+                    <span class="material-symbols-outlined text-[18px] text-error">hourglass_bottom</span>
+                    <span>Throttling Cooldown</span>
+                  </div>
+                  <span class="font-code-md text-code-md font-semibold text-primary" id="countdown-text">22s remaining</span>
+                </div>
+                <div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+                  <div class="bg-primary h-full rounded-full transition-all duration-1000" id="progress-bar" style="width: 63%;"></div>
+                </div>
+                <p class="font-body-sm text-body-sm text-on-surface-variant">You've submitted 5 reviews in the last minute. Cooldown finishes automatically. Safe buffer active.</p>
+              </div>
+
+              <!-- Recovery Buttons -->
+              <div class="mt-space-lg flex flex-wrap items-center gap-space-md">
+                <button class="flex-1 flex items-center justify-center gap-space-xs px-space-lg py-space-sm bg-primary-container text-on-primary rounded-lg font-headline-sm text-headline-sm hover:bg-primary shadow-sm active:scale-95 transition-all" id="retry-btn" type="button" onclick="startAnalysis()">
+                  <span class="material-symbols-outlined text-[18px] transition-transform" id="retry-icon">refresh</span>
+                  <span>Retry Review</span>
+                </button>
+                <a class="flex items-center gap-space-xs px-space-md py-space-sm bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md rounded-lg transition-colors" href="#diagnostic-panel">
+                  <span class="material-symbols-outlined text-[16px] text-secondary">tune</span>
+                  <span>Diagnose Issue</span>
+                </a>
+              </div>
+            </div>
+
+            <!-- Resilience Panel -->
+            <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md" id="diagnostic-panel">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-space-xs">
+                  <span class="material-symbols-outlined text-secondary text-[20px]">shield_with_heart</span>
+                  <span class="font-headline-sm text-headline-sm text-on-surface">Resilience Edge-Cases</span>
+                </div>
+                <span class="font-label-sm text-label-sm text-on-surface-variant">Adaptive Fallbacks</span>
+              </div>
+              <div class="flex flex-col gap-space-sm">
+                <div class="bg-surface-container-low rounded-lg p-space-md cursor-pointer transition-colors hover:bg-surface-container">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-space-sm">
+                      <span class="w-2.5 h-2.5 rounded-full bg-error"></span>
+                      <span class="font-headline-sm text-headline-sm text-on-surface">1. Active: Rate Limit Exceeded (HTTP 429)</span>
+                    </div>
+                    <span class="material-symbols-outlined text-[18px] text-on-surface-variant">expand_less</span>
+                  </div>
+                  <div class="mt-space-sm pl-4 font-body-sm text-body-sm text-on-surface-variant">Requests are throttled to ensure infrastructure isolation. Your queued submission executes instantly once cooldown ticks to 0s.</div>
+                </div>
+                <div class="bg-surface-container-lowest rounded-lg p-space-md shadow-sm transition-colors hover:bg-surface-container-low">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-space-sm">
+                      <span class="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+                      <span class="font-headline-sm text-headline-sm text-on-surface">2. Input Too Large (&gt; 500 lines or 50KB)</span>
+                    </div>
+                    <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
+                  </div>
+                  <div class="mt-space-xs pl-4 font-body-sm text-body-sm text-on-surface-variant">Split files by functional concerns or review target exported classes separately.</div>
+                </div>
+                <div class="bg-surface-container-lowest rounded-lg p-space-md shadow-sm transition-colors hover:bg-surface-container-low">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-space-sm">
+                      <span class="w-2.5 h-2.5 rounded-full bg-outline"></span>
+                      <span class="font-headline-sm text-headline-sm text-on-surface">3. Analysis Timeout (&gt; 15s)</span>
+                    </div>
+                    <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
+                  </div>
+                  <div class="mt-space-xs pl-4 font-body-sm text-body-sm text-on-surface-variant">Instant fallback triggers: Deep semantic reasoning steps back to deterministic fast static analysis.</div>
+                </div>
+                <div class="bg-surface-container-lowest rounded-lg p-space-md shadow-sm transition-colors hover:bg-surface-container-low">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-space-sm">
+                      <span class="w-2.5 h-2.5 rounded-full bg-tertiary"></span>
+                      <span class="font-headline-sm text-headline-sm text-on-surface">4. Network Drop / API Unreachable</span>
+                    </div>
+                    <div class="flex items-center gap-space-xs">
+                      <span class="font-label-sm text-label-sm text-tertiary font-medium">Auto-retry ON</span>
+                      <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
+                    </div>
+                  </div>
+                  <div class="mt-space-xs pl-4 font-body-sm text-body-sm text-on-surface-variant">Local IndexedDB snapshot guarantees zero code loss. Re-connection triggers seamless background sync.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Checks -->
+            <div class="bg-surface-container-low rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
+              <div class="flex items-center gap-space-xs text-on-surface">
+                <span class="material-symbols-outlined text-primary text-[18px]">checklist</span>
+                <span class="font-headline-sm text-headline-sm">Recommended Quick Checks</span>
+              </div>
+              <div class="grid grid-cols-1 gap-space-sm font-body-sm text-body-sm text-on-surface">
+                <div class="flex items-start gap-space-sm bg-surface-container-lowest p-space-sm rounded-lg shadow-sm">
+                  <span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-0.5">check_circle</span>
+                  <div class="flex flex-col">
+                    <span class="font-label-md text-label-md font-semibold">Keep functions concise</span>
+                    <span class="text-on-surface-variant">Reviewing sub-modules under 200 lines accelerates inference by 4.2x.</span>
+                  </div>
+                </div>
+                <div class="flex items-start gap-space-sm bg-surface-container-lowest p-space-sm rounded-lg shadow-sm">
+                  <span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-0.5">check_circle</span>
+                  <div class="flex flex-col">
+                    <span class="font-label-md text-label-md font-semibold">Verify complete syntax balance</span>
+                    <span class="text-on-surface-variant">Unclosed string literals or unbalanced brackets can cause parsing stalls.</span>
+                  </div>
+                </div>
+                <div class="flex items-start gap-space-sm bg-surface-container-lowest p-space-sm rounded-lg shadow-sm">
+                  <span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-0.5">check_circle</span>
+                  <div class="flex flex-col">
+                    <span class="font-label-md text-label-md font-semibold">Network &amp; VPN Tunneling</span>
+                    <span class="text-on-surface-variant">Check if corporate proxies or SSL decryptors are dropping WebSocket streams.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Status Footer -->
+            <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-wrap items-center justify-between gap-space-md text-on-surface-variant">
+              <div class="flex items-center gap-space-xs font-label-md text-label-md">
+                <span class="relative flex h-2.5 w-2.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-tertiary opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-tertiary"></span>
+                </span>
+                <span class="font-semibold text-on-surface">Review API:</span>
+                <span>Operational (99.98%)</span>
+              </div>
+              <div class="flex items-center gap-space-md font-label-md text-label-md">
+                <button class="flex items-center gap-space-xs hover:text-on-surface transition-colors" type="button">
+                  <span class="material-symbols-outlined text-[16px]">bug_report</span>
+                  <span>Report an issue</span>
+                </button>
+                <span class="text-outline">·</span>
+                <button class="text-error hover:underline transition-all" type="button" onclick="showScreen('review')">Clear editor &amp; reset</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // ── Screen Navigation ──────────────────────────────────────────
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + name).classList.add('active');
+
+    const statusMap = {
+      review: 'Ready to review',
+      analyzing: 'Analyzing code...',
+      error: 'Rate limit hit'
+    };
+    const statusEl = document.getElementById('status-label');
+    if (statusEl) statusEl.textContent = statusMap[name] || 'Ready to review';
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ── Review → Analyzing → (Success / Error) Flow ───────────────
+  let analysisTimer = null;
+  let analysisDone = false;
+
+  function startAnalysis() {
+    showScreen('analyzing');
+    analysisDone = false;
+
+    let progress = 68;
+    let seconds = 1.4;
+    const pct = document.getElementById('pct-val');
+    const timerVal = document.getElementById('timer-val');
+    const bar = document.getElementById('progress-analyzing');
+
+    clearInterval(analysisTimer);
+    analysisTimer = setInterval(() => {
+      seconds = Math.round((seconds + 0.1) * 10) / 10;
+      progress = Math.min(progress + 1.5, 100);
+
+      if (timerVal) timerVal.textContent = seconds.toFixed(1) + 's';
+      if (pct) pct.textContent = Math.round(progress) + '%';
+      if (bar) bar.style.width = progress + '%';
+
+      if (progress >= 100 && !analysisDone) {
+        analysisDone = true;
+        clearInterval(analysisTimer);
+        // 50/50 chance: show results or error
+        setTimeout(() => {
+          showScreen(Math.random() > 0.5 ? 'review' : 'error');
+        }, 600);
+      }
+    }, 100);
+  }
+
+  // ── Thumbs Up ─────────────────────────────────────────────────
+  let voted = false;
+  const thumbsUp = document.getElementById('thumbs-up');
+  if (thumbsUp) {
+    thumbsUp.addEventListener('click', () => {
+      if (!voted) {
+        const counter = document.getElementById('vote-count');
+        if (counter) counter.textContent = String(parseInt(counter.textContent) + 1);
+        thumbsUp.classList.add('bg-tertiary-container/20', 'text-tertiary');
+        voted = true;
+      }
+    });
+  }
+
+  // ── Analyzing Timer ───────────────────────────────────────────
+  // (auto-starts in showScreen → startAnalysis via button clicks)
+
+  // ── Error Cooldown Countdown ──────────────────────────────────
+  function initCountdown() {
+    let secondsLeft = 22;
+    const countdownEl = document.getElementById('countdown-text');
+    const progressBarEl = document.getElementById('progress-bar');
+
+    const timer = setInterval(() => {
+      if (secondsLeft > 0) {
+        secondsLeft--;
+        if (countdownEl) countdownEl.textContent = secondsLeft + 's remaining';
+        if (progressBarEl) progressBarEl.style.width = Math.max(0, (secondsLeft / 22) * 100) + '%';
+      } else {
+        clearInterval(timer);
+        if (countdownEl) {
+          countdownEl.textContent = 'Cooldown complete! Ready to retry.';
+          countdownEl.className = 'font-code-md text-code-md font-semibold text-tertiary';
+        }
+        if (progressBarEl) progressBarEl.style.width = '0%';
+      }
+    }, 1000);
+  }
+
+  // Re-init countdown whenever error screen is shown
+  const origShowScreen = showScreen;
+  window.showScreen = function(name) {
+    origShowScreen(name);
+    if (name === 'error') initCountdown();
+  };
+
+  // Retry icon spin
+  const retryBtn = document.getElementById('retry-btn');
+  const retryIcon = document.getElementById('retry-icon');
+  if (retryBtn && retryIcon) {
+    retryBtn.addEventListener('click', () => {
+      retryIcon.classList.add('rotate-180');
+      setTimeout(() => retryIcon.classList.remove('rotate-180'), 400);
+    });
+  }
+</script>
+</body>
+</html>
